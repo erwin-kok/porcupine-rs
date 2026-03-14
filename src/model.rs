@@ -1,32 +1,25 @@
 use std::fmt::Debug;
 
-/// Event kinds for the Event struct
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EventKind {
-    Call,
-    Return,
-}
-
 /// Represents an operation in the history
 #[derive(Debug, Clone)]
-pub struct Operation<I: Clone, O: Clone, M: Clone> {
+pub struct Operation<V: Clone, M: Clone> {
     /// Optional client identifier for visualization.
-    pub client_id: Option<usize>,
+    pub client_id: Option<u32>,
     /// The input for the operation.
-    pub input: I,
+    pub input: V,
     /// Invocation timestamp.
     pub call: i64,
     /// The output resulting from the operation.
-    pub output: O,
+    pub output: V,
     /// Response timestamp.
     pub return_time: i64,
     /// Optional arbitrary metadata for visualization.
     pub metadata: Option<M>,
 }
 
-impl<I: Clone, O: Clone, M: Clone> Operation<I, O, M> {
+impl<V: Clone, M: Clone> Operation<V, M> {
     /// Create a new operation
-    pub fn new(client_id: usize, input: I, call: i64, output: O, return_time: i64) -> Self {
+    pub fn new(client_id: u32, input: V, call: i64, output: V, return_time: i64) -> Self {
         Self {
             client_id: Some(client_id),
             input,
@@ -49,19 +42,31 @@ impl<I: Clone, O: Clone, M: Clone> Operation<I, O, M> {
     }
 }
 
-/// Represents an event (call or return)
-#[derive(Debug, Clone)]
-pub struct Event<V, M> {
-    pub client_id: Option<usize>, // optional, for visualization
-    pub kind: EventKind,
-    pub value: V,
-    pub id: usize,
-    pub metadata: Option<M>, // metadata (ReturnEvent takes precedence if both have it)
+/// Event kinds for the Event struct
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKind {
+    Call,
+    Return,
 }
 
-impl<V, M> Event<V, M> {
+/// Represents an event (call or return)
+#[derive(Debug, Clone)]
+pub struct Event<V: Clone, M: Clone> {
+    /// Optional client identifier for visualization.
+    pub client_id: Option<u32>,
+    /// Kind of the event
+    pub kind: EventKind,
+    /// Value of the event
+    pub value: V,
+    /// Used to match a function call event with its corresponding return event
+    pub id: usize,
+    /// Optional arbitrary metadata for visualization.
+    pub metadata: Option<M>,
+}
+
+impl<V: Clone, M: Clone> Event<V, M> {
     /// Create a new event
-    pub fn new(client_id: Option<usize>, kind: EventKind, value: V, id: usize) -> Self {
+    pub fn new(client_id: Option<u32>, kind: EventKind, value: V, id: usize) -> Self {
         Self {
             client_id,
             kind,
@@ -91,15 +96,13 @@ impl<V, M> Event<V, M> {
 /// The core Model struct
 pub trait Model {
     type State: Eq + PartialEq + Debug;
-    type Input: Clone + Debug;
-    type Output: Clone + Debug;
+    type Value: Clone + Debug;
     type Metadata: Clone;
-    type Value: Clone;
 
     /// Partition function: splits history into independent partitions
     fn partition(
-        history: &[Operation<Self::Input, Self::Output, Self::Metadata>],
-    ) -> Vec<Vec<Operation<Self::Input, Self::Output, Self::Metadata>>> {
+        history: &[Operation<Self::Value, Self::Metadata>],
+    ) -> Vec<Vec<Operation<Self::Value, Self::Metadata>>> {
         vec![history.to_vec()]
     }
 
@@ -114,8 +117,7 @@ pub trait Model {
     fn init() -> Self::State;
 
     /// Step function: (state, input, output) -> (success, new_state)
-    fn step(state: &Self::State, input: &Self::Input, output: &Self::Output)
-    -> (bool, Self::State);
+    fn step(state: &Self::State, input: &Self::Value, output: &Self::Value) -> (bool, Self::State);
 
     /// State equality checker (optional, defaults to PartialEq)
     fn equal(state1: &Self::State, state2: &Self::State) -> bool {
@@ -123,7 +125,7 @@ pub trait Model {
     }
 
     /// Operation description for visualization
-    fn describe_operation(input: &Self::Input, output: &Self::Output) -> String {
+    fn describe_operation(input: &Self::Value, output: &Self::Value) -> String {
         format!("{:?} -> {:?}", input, output)
     }
 
@@ -133,7 +135,7 @@ pub trait Model {
     }
 
     /// Metadata description for visualization
-    fn describe_metadata(info: Option<&Self::Input>) -> String {
+    fn describe_metadata(info: Option<&Self::Value>) -> String {
         info.map_or_else(String::new, |i| format!("{:?}", i))
     }
 }
@@ -145,35 +147,36 @@ pub enum CheckResult {
     Illegal,
 }
 
-pub trait NondeterministicModel<
-    S: Clone = (),
-    I: Clone = (),
-    O: Clone = (),
-    M: Clone = (),
-    V: Clone = (),
->
-{
+pub trait NondeterministicModel {
+    type State: Eq + PartialEq + Debug;
+    type Value: Clone + Debug;
+    type Metadata: Clone;
+
     /// Partition function: splits history into independent partitions
-    fn partition(history: &[Operation<I, O, M>]) -> Vec<Vec<Operation<I, O, M>>>;
+    fn partition(
+        history: &[Operation<Self::Value, Self::Metadata>],
+    ) -> Vec<Vec<Operation<Self::Value, Self::Metadata>>>;
 
     /// Partition function for events (alternative to Operation partitioning)
-    fn partition_event(history: &[Event<V, M>]) -> Vec<Vec<Event<V, M>>>;
+    fn partition_event(
+        history: &[Event<Self::Value, Self::Metadata>],
+    ) -> Vec<Vec<Event<Self::Value, Self::Metadata>>>;
 
     /// Initial state generator
-    fn init() -> S;
+    fn init() -> Self::State;
 
     /// Step function: (state, input, output) -> (success, new_state)
-    fn step(state: &S, input: &I, output: &O) -> Vec<S>;
+    fn step(state: &Self::State, input: &Self::Value, output: &Self::Value) -> Vec<Self::State>;
 
     /// State equality checker (optional, defaults to PartialEq)
-    fn equal(state1: &S, state2: &S) -> bool;
+    fn equal(state1: &Self::State, state2: &Self::State) -> bool;
 
     /// Operation description for visualization
-    fn describe_operation(input: &I, output: &O) -> String;
+    fn describe_operation(input: &Self::Value, output: &Self::Value) -> String;
 
     /// State description for visualization
-    fn describe_state(state: &S) -> String;
+    fn describe_state(state: &Self::State) -> String;
 
     /// Metadata description for visualization
-    fn describe_metadata(info: &I) -> String;
+    fn describe_metadata(info: &Self::Value) -> String;
 }

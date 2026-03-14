@@ -10,7 +10,7 @@ mod checker;
 mod model;
 
 /// CheckOperations checks whether a history is linearizable.
-pub fn check_operations<M: Model>(history: &[Operation<M::Input, M::Output, M::Metadata>]) -> bool {
+pub fn check_operations<M: Model>(history: &[Operation<M::Value, M::Metadata>]) -> bool {
     let (res, _) = checker::check_operations::<M>(history, false, Duration::ZERO);
     res == CheckResult::Ok
 }
@@ -20,7 +20,7 @@ pub fn check_operations<M: Model>(history: &[Operation<M::Input, M::Output, M::M
 //
 // A timeout of 0 is interpreted as an unlimited timeout.
 pub fn check_operations_timeout<M: Model>(
-    history: &[Operation<M::Input, M::Output, M::Metadata>],
+    history: &[Operation<M::Value, M::Metadata>],
     timeout: Duration,
 ) -> CheckResult {
     let (res, _) = checker::check_operations::<M>(history, false, timeout);
@@ -32,7 +32,7 @@ pub fn check_operations_timeout<M: Model>(
 //
 // The returned LinearizationInfo can be used with [Visualize].
 pub fn check_operations_verbose<M: Model>(
-    history: &[Operation<M::Input, M::Output, M::Metadata>],
+    history: &[Operation<M::Value, M::Metadata>],
     timeout: Duration,
 ) -> (CheckResult, LinearizationInfo) {
     checker::check_operations::<M>(history, true, timeout)
@@ -79,8 +79,12 @@ mod tests {
     }
 
     impl RegisterInput {
-        pub fn new(op: bool, value: u32) -> Self {
+        pub fn input(op: bool, value: u32) -> Self {
             Self { op, value }
+        }
+
+        pub fn output(value: u32) -> Self {
+            Self { op: false, value }
         }
     }
 
@@ -88,30 +92,28 @@ mod tests {
 
     impl Model for RegisterModel {
         type State = u32;
-
-        type Input = RegisterInput;
-
-        type Output = u32;
-
+        type Value = RegisterInput;
         type Metadata = u32;
-
-        type Value = u32;
 
         fn init() -> u32 {
             0
         }
 
-        fn step(state: &u32, register_input: &RegisterInput, output: &u32) -> (bool, u32) {
+        fn step(
+            state: &u32,
+            register_input: &RegisterInput,
+            output: &RegisterInput,
+        ) -> (bool, u32) {
             if !register_input.op {
                 (true, register_input.value)
             } else {
-                (output == state, *state)
+                (output.value == *state, *state)
             }
         }
 
-        fn describe_operation(register_input: &RegisterInput, output: &u32) -> String {
+        fn describe_operation(register_input: &RegisterInput, output: &RegisterInput) -> String {
             if register_input.op {
-                format!("get() -> '{}'", output)
+                format!("get() -> '{}'", output.value)
             } else {
                 format!("put('{}')", register_input.value)
             }
@@ -121,9 +123,27 @@ mod tests {
     #[test]
     fn test_register_model() {
         let ops = vec![
-            Operation::new(0, RegisterInput::new(false, 100), 0, 0, 100),
-            Operation::new(1, RegisterInput::new(true, 0), 25, 100, 75),
-            Operation::new(2, RegisterInput::new(true, 0), 30, 0, 60),
+            Operation::new(
+                0,
+                RegisterInput::input(false, 100),
+                0,
+                RegisterInput::output(0),
+                100,
+            ),
+            Operation::new(
+                1,
+                RegisterInput::input(true, 0),
+                25,
+                RegisterInput::output(100),
+                75,
+            ),
+            Operation::new(
+                2,
+                RegisterInput::input(true, 0),
+                30,
+                RegisterInput::output(0),
+                60,
+            ),
         ];
         let res = crate::check_operations::<RegisterModel>(&ops);
         assert!(res, "expected operations to be linearizable");
