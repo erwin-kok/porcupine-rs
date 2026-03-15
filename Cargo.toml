@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+atomic = "0.6.1"
+crossbeam = "0.8.4"
+rayon = "1.11.0"

@@ -34,7 +34,7 @@ pub fn check_operations_timeout<M: Model>(
 pub fn check_operations_verbose<M: Model>(
     history: &[Operation<M::Value, M::Metadata>],
     timeout: Duration,
-) -> (CheckResult, LinearizationInfo) {
+) -> (CheckResult, LinearizationInfo<M::Value, M::Metadata>) {
     checker::check_operations::<M>(history, true, timeout)
 }
 
@@ -62,7 +62,7 @@ pub fn check_events_timeout<M: Model>(
 pub fn check_events_verbose<M: Model>(
     history: &[Event<M::Value, M::Metadata>],
     timeout: Duration,
-) -> (CheckResult, LinearizationInfo) {
+) -> (CheckResult, LinearizationInfo<M::Value, M::Metadata>) {
     checker::check_events::<M>(history, true, timeout)
 }
 

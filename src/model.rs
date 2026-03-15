@@ -1,5 +1,52 @@
 use std::fmt::Debug;
 
+/// The core Model struct
+pub trait Model {
+    type State: Eq + PartialEq + Debug;
+    type Value: Clone + Send + Sync + 'static + Debug;
+    type Metadata: Clone + Send + Sync + 'static;
+
+    /// Partition function: splits history into independent partitions
+    fn partition(
+        history: &[Operation<Self::Value, Self::Metadata>],
+    ) -> Vec<Vec<Operation<Self::Value, Self::Metadata>>> {
+        vec![history.to_vec()]
+    }
+
+    /// Partition function for events (alternative to Operation partitioning)
+    fn partition_event(
+        history: &[Event<Self::Value, Self::Metadata>],
+    ) -> Vec<Vec<Event<Self::Value, Self::Metadata>>> {
+        vec![history.to_vec()]
+    }
+
+    /// Initial state generator
+    fn init() -> Self::State;
+
+    /// Step function: (state, input, output) -> (success, new_state)
+    fn step(state: &Self::State, input: &Self::Value, output: &Self::Value) -> (bool, Self::State);
+
+    /// State equality checker (optional, defaults to PartialEq)
+    fn equal(state1: &Self::State, state2: &Self::State) -> bool {
+        state1 == state2
+    }
+
+    /// Operation description for visualization
+    fn describe_operation(input: &Self::Value, output: &Self::Value) -> String {
+        format!("{:?} -> {:?}", input, output)
+    }
+
+    /// State description for visualization
+    fn describe_state(state: &Self::State) -> String {
+        format!("{:?}", state)
+    }
+
+    /// Metadata description for visualization
+    fn describe_metadata(info: Option<&Self::Value>) -> String {
+        info.map_or_else(String::new, |i| format!("{:?}", i))
+    }
+}
+
 /// Represents an operation in the history
 #[derive(Debug, Clone)]
 pub struct Operation<V: Clone, M: Clone> {
@@ -93,51 +140,20 @@ impl<V: Clone, M: Clone> Event<V, M> {
     }
 }
 
-/// The core Model struct
-pub trait Model {
-    type State: Eq + PartialEq + Debug;
-    type Value: Clone + Debug;
-    type Metadata: Clone;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    Call,
+    Return,
+}
 
-    /// Partition function: splits history into independent partitions
-    fn partition(
-        history: &[Operation<Self::Value, Self::Metadata>],
-    ) -> Vec<Vec<Operation<Self::Value, Self::Metadata>>> {
-        vec![history.to_vec()]
-    }
-
-    /// Partition function for events (alternative to Operation partitioning)
-    fn partition_event(
-        history: &[Event<Self::Value, Self::Metadata>],
-    ) -> Vec<Vec<Event<Self::Value, Self::Metadata>>> {
-        vec![history.to_vec()]
-    }
-
-    /// Initial state generator
-    fn init() -> Self::State;
-
-    /// Step function: (state, input, output) -> (success, new_state)
-    fn step(state: &Self::State, input: &Self::Value, output: &Self::Value) -> (bool, Self::State);
-
-    /// State equality checker (optional, defaults to PartialEq)
-    fn equal(state1: &Self::State, state2: &Self::State) -> bool {
-        state1 == state2
-    }
-
-    /// Operation description for visualization
-    fn describe_operation(input: &Self::Value, output: &Self::Value) -> String {
-        format!("{:?} -> {:?}", input, output)
-    }
-
-    /// State description for visualization
-    fn describe_state(state: &Self::State) -> String {
-        format!("{:?}", state)
-    }
-
-    /// Metadata description for visualization
-    fn describe_metadata(info: Option<&Self::Value>) -> String {
-        info.map_or_else(String::new, |i| format!("{:?}", i))
-    }
+#[derive(Debug, Clone)]
+pub struct Entry<V, M> {
+    pub kind: EntryKind,
+    pub value: V,
+    pub id: usize,
+    pub time: i64,
+    pub client_id: Option<u32>,
+    pub metadata: Option<M>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -145,38 +161,4 @@ pub enum CheckResult {
     Unknown,
     Ok,
     Illegal,
-}
-
-pub trait NondeterministicModel {
-    type State: Eq + PartialEq + Debug;
-    type Value: Clone + Debug;
-    type Metadata: Clone;
-
-    /// Partition function: splits history into independent partitions
-    fn partition(
-        history: &[Operation<Self::Value, Self::Metadata>],
-    ) -> Vec<Vec<Operation<Self::Value, Self::Metadata>>>;
-
-    /// Partition function for events (alternative to Operation partitioning)
-    fn partition_event(
-        history: &[Event<Self::Value, Self::Metadata>],
-    ) -> Vec<Vec<Event<Self::Value, Self::Metadata>>>;
-
-    /// Initial state generator
-    fn init() -> Self::State;
-
-    /// Step function: (state, input, output) -> (success, new_state)
-    fn step(state: &Self::State, input: &Self::Value, output: &Self::Value) -> Vec<Self::State>;
-
-    /// State equality checker (optional, defaults to PartialEq)
-    fn equal(state1: &Self::State, state2: &Self::State) -> bool;
-
-    /// Operation description for visualization
-    fn describe_operation(input: &Self::Value, output: &Self::Value) -> String;
-
-    /// State description for visualization
-    fn describe_state(state: &Self::State) -> String;
-
-    /// Metadata description for visualization
-    fn describe_metadata(info: &Self::Value) -> String;
 }
