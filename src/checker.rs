@@ -1,44 +1,59 @@
-use crate::model::{CheckResult, Model, Operation};
+use crate::{
+    linearizer::Linearizer,
+    model::{CheckResult, Event, Model, Operation},
+    partition::{CheckEntry, Partition},
+};
+
+// ---------------------------------------------------------------------------
+// Public entry points
+// ---------------------------------------------------------------------------
 
 pub fn check_operations<M: Model>(history: &[Operation<M>]) -> CheckResult {
-    for partition in M::partition(history) {
-        if !linearizable::<M>(&partition, &M::init()) {
+    for partition_ops in M::partition_operations(history) {
+        let part = Partition::from_operations(&partition_ops);
+        if !check_single::<M>(&part) {
             return CheckResult::Illegal;
         }
     }
     CheckResult::Ok
 }
 
-fn linearizable<M: Model>(remaining: &[Operation<M>], state: &M::State) -> bool {
-    if remaining.is_empty() {
-        return true;
-    }
-
-    for i in 0..remaining.len() {
-        if !eligible(remaining, i) {
-            continue;
+pub fn check_events<M: Model>(history: &[Event<M>]) -> CheckResult {
+    for partition_events in M::partition_events(history) {
+        let part = Partition::from_events(&partition_events);
+        if !check_single::<M>(&part) {
+            return CheckResult::Illegal;
         }
-        let op = &remaining[i];
-        let (accepted, next_state) = M::step(state, &op.input, &op.output);
-        if accepted {
-            let rest: Vec<Operation<M>> = remaining
-                .iter()
-                .enumerate()
-                .filter(|&(j, _)| j != i)
-                .map(|(_, o)| o.clone())
-                .collect();
-            if linearizable::<M>(&rest, &next_state) {
-                return true;
+    }
+    CheckResult::Ok
+}
+
+// ---------------------------------------------------------------------------
+// Core iterative search
+// ---------------------------------------------------------------------------
+fn check_single<M: Model>(partition: &Partition<M>) -> bool {
+    let n = partition.check_history.len();
+    let mut lz = Linearizer::<M>::new(partition);
+    let mut cur = lz.front();
+
+    while cur < n {
+        match partition.check_history[cur] {
+            CheckEntry::Call { .. } => {
+                if let Some(next_state) = lz.try_linearize(cur) {
+                    lz.lift(cur, next_state);
+                    cur = lz.front(); // restart scan from the head
+                } else {
+                    cur = lz.next_of(cur); // skip this candidate
+                }
+            }
+            CheckEntry::Return { .. } => {
+                match lz.backtrack() {
+                    Some(pos) => cur = lz.next_of(pos), // resume after un-lifted call
+                    None => return false,               // stack empty — not linearizable
+                }
             }
         }
     }
 
-    false
-}
-
-fn eligible<M: Model>(ops: &[Operation<M>], i: usize) -> bool {
-    let call_start = ops[i].call;
-    ops.iter()
-        .enumerate()
-        .all(|(j, other)| j == i || other.return_time > call_start)
+    true // every entry lifted — complete linearization found
 }

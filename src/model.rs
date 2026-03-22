@@ -1,25 +1,34 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+// ---------------------------------------------------------------------------
+// Model trait
+// ---------------------------------------------------------------------------
+
 pub trait Model: Clone + Send + Sync {
     type State: Clone + Send + Sync + Debug + Hash + Eq;
     type Input: Clone + Send + Sync + Debug;
     type Output: Clone + PartialEq + Send + Sync + Debug;
     type Metadata: Clone + Send + Sync + Debug;
 
-    fn partition(history: &[Operation<Self>]) -> Vec<Vec<Operation<Self>>> {
+    /// Partition an operation history into independent sub-histories that can
+    /// be checked in isolation. Defaults to a single partition.
+    fn partition_operations(history: &[Operation<Self>]) -> Vec<Vec<Operation<Self>>> {
         vec![history.to_vec()]
     }
 
-    fn partition_event(history: &[Event<Self>]) -> Vec<Vec<Event<Self>>> {
+    /// Same as [`partition`] but for event histories.
+    fn partition_events(history: &[Event<Self>]) -> Vec<Vec<Event<Self>>> {
         vec![history.to_vec()]
     }
 
     fn init() -> Self::State;
 
+    /// Pure step function — returns (accepted, next_state).
     fn step(state: &Self::State, input: &Self::Input, output: &Self::Output)
     -> (bool, Self::State);
 
+    /// State equality. Defaults to `==`.
     fn equal(s1: &Self::State, s2: &Self::State) -> bool {
         s1 == s2
     }
@@ -37,76 +46,98 @@ pub trait Model: Clone + Send + Sync {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Operation
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
 pub struct Operation<M: Model> {
     pub client_id: Option<u32>,
     pub input: M::Input,
-    pub call: i64,
+    pub call_time: i64,
     pub output: M::Output,
     pub return_time: i64,
     pub metadata: Option<M::Metadata>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EventKind {
-    Call,
-    Return,
-}
-
-pub enum EventValue<M: Model> {
-    Call(M::Input),
-    Return(M::Output),
-}
-
-impl<M: Model> Clone for EventValue<M> {
-    fn clone(&self) -> Self {
-        match self {
-            EventValue::Call(v) => EventValue::Call(v.clone()),
-            EventValue::Return(v) => EventValue::Return(v.clone()),
-        }
-    }
-}
-
-impl<M: Model> Debug for EventValue<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EventValue::Call(v) => write!(f, "Call({:?})", v),
-            EventValue::Return(v) => write!(f, "Return({:?})", v),
-        }
-    }
-}
-
-pub struct Event<M: Model> {
-    pub client_id: Option<u32>,
-    pub kind: EventKind,
-    pub value: EventValue<M>,
-    pub id: usize,
-    pub metadata: Option<M::Metadata>,
+pub enum Event<M: Model> {
+    Call {
+        client_id: Option<u32>,
+        value: M::Input,
+        id: usize,
+        metadata: Option<M::Metadata>,
+    },
+    Return {
+        client_id: Option<u32>,
+        value: M::Output,
+        id: usize,
+        metadata: Option<M::Metadata>,
+    },
 }
 
 impl<M: Model> Clone for Event<M> {
     fn clone(&self) -> Self {
-        Self {
-            client_id: self.client_id,
-            kind: self.kind,
-            value: self.value.clone(),
-            id: self.id,
-            metadata: self.metadata.clone(),
+        match self {
+            Event::Call {
+                client_id,
+                value,
+                id,
+                metadata,
+            } => Event::Call {
+                client_id: *client_id,
+                value: value.clone(),
+                id: *id,
+                metadata: metadata.clone(),
+            },
+            Event::Return {
+                client_id,
+                value,
+                id,
+                metadata,
+            } => Event::Return {
+                client_id: *client_id,
+                value: value.clone(),
+                id: *id,
+                metadata: metadata.clone(),
+            },
         }
     }
 }
 
 impl<M: Model> Debug for Event<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Event")
-            .field("client_id", &self.client_id)
-            .field("kind", &self.kind)
-            .field("value", &self.value)
-            .field("id", &self.id)
-            .field("metadata", &self.metadata)
-            .finish()
+        match self {
+            Event::Call {
+                client_id,
+                value,
+                id,
+                metadata,
+            } => f
+                .debug_struct("Call")
+                .field("client_id", client_id)
+                .field("value", value)
+                .field("id", id)
+                .field("metadata", metadata)
+                .finish(),
+            Event::Return {
+                client_id,
+                value,
+                id,
+                metadata,
+            } => f
+                .debug_struct("Return")
+                .field("client_id", client_id)
+                .field("value", value)
+                .field("id", id)
+                .field("metadata", metadata)
+                .finish(),
+        }
     }
 }
+
+// ---------------------------------------------------------------------------
+// CheckResult
+// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CheckResult {
