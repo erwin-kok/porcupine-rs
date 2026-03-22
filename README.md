@@ -6,7 +6,7 @@ A Rust implementation of the Porcupine linearizability checker.
 [![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-1f425f.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/erwin-kok/porcupine-rs.svg)](https://github.com/erwin-kok/porcupine-rs/blob/master/LICENSE)
 
-Porcupine (original project: https://github.com/anishathalye/porcupine) is a fast linearizability checker used to test the correctness of distributed systems. This project reimplements the core ideas in Rust, with a focus on learning and design clarity.
+Porcupine (original project: https://github.com/anishathalye/porcupine) is a fast linearizability checker used to test the correctness of distributed systems. This project reimplements the core ideas in Rust, with a focus on learning and design clarity rather than raw performance or feature parity.
 
 This project exists for a few key reasons:
 
@@ -28,6 +28,12 @@ More concretely:
     - The sequence is valid according to the system’s specification
 
 If such an ordering exists, the history is linearizable.
+
+<div style="text-align: center;">
+<img src="./docs/linearizability.svg" width="500" height="250">
+</div>
+
+*This system is linearizable. The red lines mark the linearization points—the moments at which each operation appears to take effect atomically.*
 
 # Inspiration
 
