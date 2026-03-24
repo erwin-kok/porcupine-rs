@@ -1,49 +1,53 @@
-use porcupine::{Event, Model, Operation};
-use std::{
-    fmt::{Debug, Display, Formatter, Result},
-    hash::Hash,
-};
+use porcupine::{Event, EventModel, Model, Operation};
+use std::fmt::Debug;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum RegisterInput {
+#[derive(Clone, Debug)]
+pub enum RegisterOp {
+    Get(Option<u32>),
     Put(u32),
-    Get,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RegisterOutput {
-    PutAck,
-    GetResult(Option<u32>),
-}
-
-impl Display for RegisterInput {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{:?}", self)
-    }
-}
-impl Display for RegisterOutput {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Debug, Clone)]
-pub struct RegisterModel {}
+pub struct RegisterModel;
 
 impl Model for RegisterModel {
     type State = u32;
-    type Input = RegisterInput;
-    type Output = RegisterOutput;
+    type Op = RegisterOp;
     type Metadata = u32;
 
     fn init() -> u32 {
         0
     }
 
-    fn step(state: &u32, input: &RegisterInput, output: &RegisterOutput) -> (bool, u32) {
-        match input {
-            RegisterInput::Put(v) => (output == &RegisterOutput::PutAck, *v),
-            RegisterInput::Get => (output == &RegisterOutput::GetResult(Some(*state)), *state), // state is unchanged
+    fn step(state: &u32, op: &RegisterOp) -> (bool, u32) {
+        match op {
+            RegisterOp::Get(value) => (*value == Some(*state), *state),
+            RegisterOp::Put(value) => (true, *value),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum RegisterInput {
+    Get,
+    Put(u32),
+}
+
+#[derive(Clone, Debug)]
+pub enum RegisterOutput {
+    Get(Option<u32>),
+    Put,
+}
+
+impl EventModel for RegisterModel {
+    type Input = RegisterInput;
+    type Output = RegisterOutput;
+
+    fn combine(input: &RegisterInput, output: &RegisterOutput) -> RegisterOp {
+        match (input, output) {
+            (RegisterInput::Get, RegisterOutput::Get(value)) => RegisterOp::Get(*value),
+            (RegisterInput::Put(value), RegisterOutput::Put) => RegisterOp::Put(*value),
+            _ => panic!("unexpected input/output combination found"),
         }
     }
 }
@@ -51,10 +55,9 @@ impl Model for RegisterModel {
 fn put(client_id: u32, call: i64, ret: i64, v: u32) -> Operation<RegisterModel> {
     Operation {
         client_id: Some(client_id),
-        input: RegisterInput::Put(v),
         call_time: call,
-        output: RegisterOutput::PutAck,
         return_time: ret,
+        op: RegisterOp::Put(v),
         metadata: None,
     }
 }
@@ -62,10 +65,9 @@ fn put(client_id: u32, call: i64, ret: i64, v: u32) -> Operation<RegisterModel> 
 fn get(client_id: u32, call: i64, ret: i64, v: Option<u32>) -> Operation<RegisterModel> {
     Operation {
         client_id: Some(client_id),
-        input: RegisterInput::Get,
         call_time: call,
-        output: RegisterOutput::GetResult(v),
         return_time: ret,
+        op: RegisterOp::Get(v),
         metadata: None,
     }
 }
@@ -82,7 +84,7 @@ fn put_call(client_id: u32, id: usize, v: u32) -> Event<RegisterModel> {
 fn put_return(client_id: u32, id: usize) -> Event<RegisterModel> {
     Event::Return {
         client_id: Some(client_id),
-        value: RegisterOutput::PutAck,
+        value: RegisterOutput::Put,
         id,
         metadata: None,
     }
@@ -100,7 +102,7 @@ fn get_call(client_id: u32, id: usize) -> Event<RegisterModel> {
 fn get_return(client_id: u32, id: usize, v: Option<u32>) -> Event<RegisterModel> {
     Event::Return {
         client_id: Some(client_id),
-        value: RegisterOutput::GetResult(v),
+        value: RegisterOutput::Get(v),
         id,
         metadata: None,
     }

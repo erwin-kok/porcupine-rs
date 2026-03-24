@@ -15,6 +15,10 @@ impl<M: Model> Cache<M> {
     }
 
     /// Returns `true` if `(linearized, state)` has already been visited.
+    ///
+    /// Checks the hash bucket for `linearized.hash_val()`, then confirms equality on both
+    /// the bitset and the state using `M::equal` (respects custom equality if the model
+    /// provides one).
     pub fn cache_contains(&self, linearized: &Bitset, state: &M::State) -> bool {
         self.map.get(&linearized.hash_val()).is_some_and(|bucket| {
             bucket
@@ -24,6 +28,8 @@ impl<M: Model> Cache<M> {
     }
 
     /// Record `(linearized, state)` as visited.
+    ///
+    /// Inserts into the hash bucket for `linearized.hash_val()`.
     pub fn cache_insert(&mut self, linearized: Bitset, state: M::State) {
         self.map
             .entry(linearized.hash_val())
@@ -43,16 +49,18 @@ mod tests {
 
     #[derive(Clone)]
     struct IntModel;
+
     impl Model for IntModel {
         type State = i32;
-        type Input = i32;
-        type Output = i32;
+        type Op = ();
         type Metadata = ();
+
         fn init() -> i32 {
             0
         }
-        fn step(s: &i32, i: &i32, _: &i32) -> (bool, i32) {
-            (true, s + i)
+
+        fn step(state: &Self::State, _: &Self::Op) -> (bool, Self::State) {
+            (true, *state)
         }
     }
 

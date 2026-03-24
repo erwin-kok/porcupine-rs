@@ -1,56 +1,28 @@
 use porcupine::{Model, Operation};
-use std::{
-    fmt::{Debug, Display, Formatter, Result},
-    hash::Hash,
-};
+use std::fmt::Debug;
+
+#[derive(Clone, Debug)]
+pub enum KVOp {
+    Write(String),
+    Read(Option<String>),
+}
 
 #[derive(Clone)]
 pub struct KVModel;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum KVInput {
-    Write(String),
-    Read,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum KVOutput {
-    WriteAck,
-    ReadResult(Option<String>),
-}
-
-impl Display for KVInput {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{:?}", self)
-    }
-}
-impl Display for KVOutput {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 impl Model for KVModel {
     type State = Option<String>;
-    type Input = KVInput;
-    type Output = KVOutput;
+    type Op = KVOp;
     type Metadata = ();
 
     fn init() -> Self::State {
         None
     }
 
-    fn step(
-        state: &Self::State,
-        input: &Self::Input,
-        output: &Self::Output,
-    ) -> (bool, Self::State) {
-        match input {
-            KVInput::Write(v) => (output == &KVOutput::WriteAck, Some(v.clone())),
-            KVInput::Read => (
-                output == &KVOutput::ReadResult(state.clone()),
-                state.clone(),
-            ),
+    fn step(state: &Option<String>, op: &KVOp) -> (bool, Option<String>) {
+        match op {
+            KVOp::Write(value) => (true, Some(value.clone())),
+            KVOp::Read(value) => (*value == *state, state.clone()),
         }
     }
 }
@@ -67,34 +39,30 @@ fn test_demo() {
     let h1 = vec![
         Operation::<KVModel> {
             client_id: Some(0),
-            input: KVInput::Write("1".into()),
             call_time: 0,
-            output: KVOutput::WriteAck,
             return_time: 40,
+            op: KVOp::Write("1".into()),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(1),
-            input: KVInput::Read,
             call_time: 20,
-            output: KVOutput::ReadResult(Some("1".into())),
             return_time: 60,
+            op: KVOp::Read(Some("1".into())),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(2),
-            input: KVInput::Write("2".into()),
             call_time: 50,
-            output: KVOutput::WriteAck,
             return_time: 90,
+            op: KVOp::Write("2".into()),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(3),
-            input: KVInput::Read,
             call_time: 80,
-            output: KVOutput::ReadResult(Some("2".into())),
             return_time: 120,
+            op: KVOp::Read(Some("2".into())),
             metadata: None,
         },
     ];
@@ -106,18 +74,16 @@ fn test_demo() {
     let h2 = vec![
         Operation::<KVModel> {
             client_id: Some(0),
-            input: KVInput::Write("1".into()),
             call_time: 0,
-            output: KVOutput::WriteAck,
             return_time: 50,
+            op: KVOp::Write("1".into()),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(1),
-            input: KVInput::Read,
             call_time: 0,
-            output: KVOutput::ReadResult(Some("2".into())),
             return_time: 80,
+            op: KVOp::Read(Some("2".into())),
             metadata: None,
         },
     ];
@@ -129,35 +95,31 @@ fn test_demo() {
     let h3 = vec![
         Operation::<KVModel> {
             client_id: Some(0),
-            input: KVInput::Write("a".into()),
             call_time: 0,
-            output: KVOutput::WriteAck,
             return_time: 30,
+            op: KVOp::Write("a".into()),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(1),
-            input: KVInput::Read,
             call_time: 20,
-            output: KVOutput::ReadResult(Some("a".into())),
             return_time: 50,
+            op: KVOp::Read(Some("a".into())),
             metadata: None,
         },
         Operation::<KVModel> {
             client_id: Some(2),
-            input: KVInput::Write("a".into()),
             call_time: 0,
-            output: KVOutput::WriteAck,
             return_time: 30,
+            op: KVOp::Write("a".into()),
             metadata: None,
         },
         // "b" was never written — violation
         Operation::<KVModel> {
             client_id: Some(3),
-            input: KVInput::Read,
             call_time: 20,
-            output: KVOutput::ReadResult(Some("b".into())),
             return_time: 50,
+            op: KVOp::Read(Some("b".into())),
             metadata: None,
         },
     ];
