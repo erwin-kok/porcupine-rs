@@ -1,4 +1,4 @@
-use porcupine::{Event, EventModel, Model, Operation};
+use porcupine_rs::{Event, EventModel, Model, Operation};
 use regex::Regex;
 use std::{
     collections::HashMap,

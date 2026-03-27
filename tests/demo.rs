@@ -1,4 +1,4 @@
-use porcupine::{Model, Operation};
+use porcupine_rs::{Model, Operation};
 use std::fmt::Debug;
 
 #[derive(Clone, Debug)]
@@ -66,7 +66,7 @@ fn test_demo() {
             metadata: None,
         },
     ];
-    let result = porcupine::check_operations(&h1);
+    let result = porcupine_rs::check_operations(&h1);
     assert!(result);
 
     // ── History 2: violation — read sees a value never written ────────────
@@ -87,7 +87,7 @@ fn test_demo() {
             metadata: None,
         },
     ];
-    let linearizable = porcupine::check_operations(&h2);
+    let linearizable = porcupine_rs::check_operations(&h2);
     assert!(!linearizable);
 
     // ── History 3: two keys, one fine, one violated ───────────────────────
@@ -123,6 +123,6 @@ fn test_demo() {
             metadata: None,
         },
     ];
-    let linearizable = porcupine::check_operations(&h3);
+    let linearizable = porcupine_rs::check_operations(&h3);
     assert!(!linearizable);
 }

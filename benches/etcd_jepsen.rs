@@ -6,7 +6,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 
 fn check_jepsen(log_num: u32, correct: bool) {
     let events = load_jepsen_log(log_num);
-    let res = porcupine::check_events(&events);
+    let res = porcupine_rs::check_events(&events);
     assert_eq!(correct, res, "expected output {correct}, got output {res}")
 }
 

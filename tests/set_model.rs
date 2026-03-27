@@ -1,4 +1,4 @@
-use porcupine::{Event, EventModel, Model};
+use porcupine_rs::{Event, EventModel, Model};
 use std::fmt::Debug;
 
 #[derive(Clone, Debug)]
@@ -115,7 +115,7 @@ fn test_set_model() {
         write_return(1, 1),
         write_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&o1);
+    let linearizable = porcupine_rs::check_events(&o1);
     assert!(linearizable, "expected operations to be linearizable");
 
     let o2 = vec![
@@ -126,7 +126,7 @@ fn test_set_model() {
         write_return(1, 1),
         write_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&o2);
+    let linearizable = porcupine_rs::check_events(&o2);
     assert!(linearizable, "expected operations to be linearizable");
 
     let o3 = vec![
@@ -137,7 +137,7 @@ fn test_set_model() {
         write_return(1, 1),
         write_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&o3);
+    let linearizable = porcupine_rs::check_events(&o3);
     assert!(linearizable, "expected operations to be linearizable");
 
     let o4 = vec![
@@ -148,6 +148,6 @@ fn test_set_model() {
         write_return(1, 1),
         write_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&o4);
+    let linearizable = porcupine_rs::check_events(&o4);
     assert!(!linearizable, "expected operations not to be linearizable");
 }

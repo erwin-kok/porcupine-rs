@@ -1,4 +1,4 @@
-use porcupine::{Event, EventModel, Model, Operation};
+use porcupine_rs::{Event, EventModel, Model, Operation};
 use std::fmt::Debug;
 
 #[derive(Clone, Debug)]
@@ -115,7 +115,7 @@ fn test_register_model() {
         get(1, 25, 75, Some(100)),
         get(2, 30, 60, Some(0)),
     ];
-    let linearizable = porcupine::check_operations(&o1);
+    let linearizable = porcupine_rs::check_operations(&o1);
     assert!(linearizable, "expected operations to be linearizable");
 
     let e1 = vec![
@@ -126,7 +126,7 @@ fn test_register_model() {
         get_return(1, 1, Some(100)),
         put_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&e1);
+    let linearizable = porcupine_rs::check_events(&e1);
     assert!(linearizable, "expected events to be linearizable");
 
     let o2 = vec![
@@ -134,7 +134,7 @@ fn test_register_model() {
         get(1, 10, 30, Some(200)),
         get(2, 40, 90, Some(0)),
     ];
-    let linearizable = porcupine::check_operations(&o2);
+    let linearizable = porcupine_rs::check_operations(&o2);
     assert!(!linearizable, "expected operations to not be linearizable");
 
     let e2 = vec![
@@ -145,7 +145,7 @@ fn test_register_model() {
         get_return(2, 2, Some(0)),
         put_return(0, 0),
     ];
-    let linearizable = porcupine::check_events(&e2);
+    let linearizable = porcupine_rs::check_events(&e2);
     assert!(!linearizable, "expected events to not be linearizable");
 }
 
@@ -157,7 +157,7 @@ fn test_zero_duration() {
         get(2, 30, 30, Some(0)),
         get(3, 30, 30, Some(0)),
     ];
-    let linearizable = porcupine::check_operations(&o1);
+    let linearizable = porcupine_rs::check_operations(&o1);
     assert!(linearizable, "expected operations to be linearizable");
 
     let o2 = vec![
@@ -166,6 +166,6 @@ fn test_zero_duration() {
         get(2, 10, 10, Some(200)),
         get(3, 40, 90, Some(0)),
     ];
-    let linearizable = porcupine::check_operations(&o2);
+    let linearizable = porcupine_rs::check_operations(&o2);
     assert!(!linearizable, "expected operations to not be linearizable");
 }
