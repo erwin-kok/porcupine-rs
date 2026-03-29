@@ -31,7 +31,7 @@ pub struct EtcdModel;
 impl Model for EtcdModel {
     type State = i32;
     type Op = EtcdOp;
-    type Metadata = u32;
+    type Metadata = ();
 
     fn init() -> i32 {
         -1000000

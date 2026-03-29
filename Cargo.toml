@@ -1,15 +1,14 @@
 [package]
 name = "porcupine-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A fast linearizability checker"
 license = "MIT"
 
 [dependencies]
-atomic = "0.6.1"
 criterion = "0.8.2"
+crossbeam = "0.8.4"
 paste = "1.0.15"
-rayon = "1.11.0"
 regex = "1.12.3"
 
 [[bench]]

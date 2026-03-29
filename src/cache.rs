@@ -1,8 +1,37 @@
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use crate::bitset::Bitset;
 use crate::model::Model;
 
+// ---------------------------------------------------------------------------
+// Combined hash key
+// ---------------------------------------------------------------------------
+/// Mix the FNV-1a hash of `linearized` with the SipHash of `state` into a
+/// single u64 key.
+///
+/// Using both hashes makes it overwhelmingly unlikely that two distinct
+/// `(linearized, state)` pairs share the same bucket.
+fn cache_key<M: Model>(linearized: &Bitset, state: &M::State) -> u64 {
+    let bitset_hash = linearized.hash_val();
+    // Hash the state with the standard library's SipHash (good avalanche).
+    let state_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        let mut h = DefaultHasher::new();
+        state.hash(&mut h);
+        h.finish()
+    };
+    // Fibonacci/golden-ratio mix so that small differences in either input
+    // produce very different combined keys.
+    bitset_hash
+        ^ state_hash
+            .wrapping_add(0x9e37_79b9_7f4a_7c15)
+            .wrapping_add(bitset_hash << 6)
+            .wrapping_add(bitset_hash >> 2)
+}
+// ---------------------------------------------------------------------------
+// Cache
+// ---------------------------------------------------------------------------
 pub struct Cache<M: Model> {
     map: HashMap<u64, Vec<(Bitset, M::State)>>,
 }
@@ -15,12 +44,9 @@ impl<M: Model> Cache<M> {
     }
 
     /// Returns `true` if `(linearized, state)` has already been visited.
-    ///
-    /// Checks the hash bucket for `linearized.hash_val()`, then confirms equality on both
-    /// the bitset and the state using `M::equal` (respects custom equality if the model
-    /// provides one).
     pub fn cache_contains(&self, linearized: &Bitset, state: &M::State) -> bool {
-        self.map.get(&linearized.hash_val()).is_some_and(|bucket| {
+        let key = cache_key::<M>(linearized, state);
+        self.map.get(&key).is_some_and(|bucket| {
             bucket
                 .iter()
                 .any(|(bs, s)| bs == linearized && M::equal(s, state))
@@ -28,13 +54,9 @@ impl<M: Model> Cache<M> {
     }
 
     /// Record `(linearized, state)` as visited.
-    ///
-    /// Inserts into the hash bucket for `linearized.hash_val()`.
     pub fn cache_insert(&mut self, linearized: Bitset, state: M::State) {
-        self.map
-            .entry(linearized.hash_val())
-            .or_default()
-            .push((linearized, state));
+        let key = cache_key::<M>(&linearized, &state);
+        self.map.entry(key).or_default().push((linearized, state));
     }
 }
 
@@ -52,15 +74,14 @@ mod tests {
 
     impl Model for IntModel {
         type State = i32;
-        type Op = ();
+        type Op = i32;
         type Metadata = ();
 
         fn init() -> i32 {
             0
         }
-
-        fn step(state: &Self::State, _: &Self::Op) -> (bool, Self::State) {
-            (true, *state)
+        fn step(s: &i32, op: &i32) -> (bool, i32) {
+            (true, s + op)
         }
     }
 
@@ -104,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn two_entries_in_same_bucket() {
+    fn two_entries_both_found() {
         let mut cache = Cache::<IntModel>::new();
         let key0 = bs(4, &[0]);
         let key1 = bs(4, &[1]);
@@ -117,11 +138,23 @@ mod tests {
     }
 
     #[test]
-    fn empty_bitset_key() {
+    fn empty_bitset_zero_state() {
         let mut cache = Cache::<IntModel>::new();
-        let key = Bitset::new(8); // all zeros
+        let key = Bitset::new(8);
         cache.cache_insert(key.clone(), 0);
         assert!(cache.cache_contains(&key, &0));
         assert!(!cache.cache_contains(&key, &1));
+    }
+    #[test]
+    fn same_bitset_different_states_both_stored() {
+        // Two entries sharing the same bitset but different states must both be
+        // findable — this exercises the bucket collision path.
+        let mut cache = Cache::<IntModel>::new();
+        let key = bs(4, &[2]);
+        cache.cache_insert(key.clone(), 100);
+        cache.cache_insert(key.clone(), 200);
+        assert!(cache.cache_contains(&key, &100));
+        assert!(cache.cache_contains(&key, &200));
+        assert!(!cache.cache_contains(&key, &300));
     }
 }

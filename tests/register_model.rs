@@ -13,7 +13,7 @@ pub struct RegisterModel;
 impl Model for RegisterModel {
     type State = u32;
     type Op = RegisterOp;
-    type Metadata = u32;
+    type Metadata = ();
 
     fn init() -> u32 {
         0

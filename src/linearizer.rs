@@ -80,14 +80,21 @@ impl<'a, M: Model> Linearizer<'a, M> {
             return None;
         }
 
-        let mut next_linearized = self.linearized.clone();
-        next_linearized.set(op_index);
+        // Temporarily mark the bit so we can probe the cache with the
+        // would-be linearized set, without allocating a clone upfront.
+        self.linearized.set(op_index);
 
-        if self.cache.cache_contains(&next_linearized, &next_state) {
+        if self.cache.cache_contains(&self.linearized, &next_state) {
+            // Already explored — prune.  Restore the bit and bail.
+            self.linearized.clear(op_index);
             return None;
         }
 
-        self.cache.cache_insert(next_linearized, next_state.clone());
+        // Cache miss: store a snapshot, then restore the bit.
+        // lift() will set it permanently when the caller commits this choice.
+        self.cache
+            .cache_insert(self.linearized.clone(), next_state.clone());
+        self.linearized.clear(op_index);
         Some(next_state)
     }
 

@@ -13,7 +13,7 @@ pub struct SetModel;
 impl Model for SetModel {
     type State = Vec<u32>;
     type Op = SetOp;
-    type Metadata = u32;
+    type Metadata = ();
 
     fn init() -> Vec<u32> {
         Vec::new()
