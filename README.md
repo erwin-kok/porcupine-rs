@@ -276,7 +276,7 @@ visualization/
 
 ## Visualizing histories
 
-<img src="./docs/visualization.png" width="500" height="250">
+<img src="./docs/visualization.png" width="791" height="424">
 
 
 Use `check_operations_info` or `check_events_info` instead of the plain
