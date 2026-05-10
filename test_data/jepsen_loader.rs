@@ -1,4 +1,4 @@
-use porcupine_rs::{Event, EventModel, Model, Operation};
+use porcupine_rs::{Event, EventModel, Model};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -65,8 +65,32 @@ impl Model for EtcdModel {
         }
     }
 
-    fn describe_operation(_op: &Operation<EtcdModel>) -> String {
-        String::from("")
+    fn describe_operation(op: &EtcdOp) -> String {
+        match op {
+            EtcdOp::Read { exists, value, .. } => {
+                if *exists {
+                    format!("read() -> {value}").to_string()
+                } else {
+                    "read() -> null".to_string()
+                }
+            }
+            EtcdOp::Write { value } => format!("write({value})").to_string(),
+            EtcdOp::Cas {
+                from,
+                to,
+                ok,
+                unknown,
+            } => {
+                let result = if *unknown {
+                    "unknown"
+                } else if *ok {
+                    "ok"
+                } else {
+                    "fail"
+                };
+                format!("cas({from}, {to}) -> {result}").to_string()   
+            },
+        }
     }
 }
 

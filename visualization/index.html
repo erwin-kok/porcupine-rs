@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Porcupine-rs — Linearizability Visualizer</title>
+    <style>
+      /*{CSS}*/
+    </style>
+  </head>
+  <body>
+    <div id="legend">
+      <div class="legend-item">
+        <span style="font-weight:600;color:#1a1a1a;">Porcupine-rs</span>
+      </div>
+
+      <div class="legend-item" style="margin-left:8px;">
+        <svg width="32" height="14" style="flex-shrink:0;">
+          <rect x="0" y="2" width="32" height="10" rx="3"
+                fill="#60b8d4" stroke="#2e7fa3" stroke-width="1.5"/>
+        </svg>
+        <span>Operation</span>
+      </div>
+
+      <div class="legend-item">
+        <span class="legend-swatch legend-swatch--valid"></span>
+        <span>Valid linearization point</span>
+      </div>
+
+      <div class="legend-item">
+        <span class="legend-swatch legend-swatch--invalid"></span>
+        <span>Invalid linearization point</span>
+      </div>
+
+      <div class="legend-item" style="margin-left:auto;">
+        <span id="jump-link">↓ jump to first error</span>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         Main visualization canvas
+         ================================================================ -->
+    <div id="canvas"></div>
+
+    <!-- Hidden div used for measuring text widths -->
+    <div id="calc"></div>
+
+    <script>
+      /*{JS}*/
+
+      const data = /*{DATA}*/
+
+      render(data)
+    </script>
+  </body>
+</html>

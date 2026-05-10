@@ -70,8 +70,8 @@ impl<M: Model> Partition<M> {
         check_history.sort_by_key(|e| (e.time(), e.kind_order()));
 
         Self { check_history, ops }
-        }
     }
+}
 
 impl<M: EventModel> Partition<M> {
     // -----------------------------------------------------------------------
@@ -133,6 +133,7 @@ impl<M: EventModel> Partition<M> {
 
                     // Combine input and output into an Op
                     let op = M::combine(&p.input, &value.clone());
+
                     // Slot by id so ops[id] is always the right operation.
                     ops[*id] = Some(Operation {
                         client_id: p.client_id,
@@ -162,6 +163,7 @@ impl<M: EventModel> Partition<M> {
     // -----------------------------------------------------------------------
     // renumber
     // -----------------------------------------------------------------------
+
     fn renumber(events: &[Event<M>]) -> Vec<Event<M>> {
         let mut remap: HashMap<usize, usize> = HashMap::new();
         let mut next_id: usize = 0;
@@ -213,15 +215,17 @@ impl<M: EventModel> Partition<M> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{CheckEntry, Event, EventModel, Partition};
     use crate::model::{Model, Operation};
 
     #[derive(Clone)]
     struct DummyModel;
+
     impl Model for DummyModel {
         type State = ();
         type Op = ();
         type Metadata = ();
+
         fn init() {}
 
         fn step(_: &Self::State, _: &Self::Op) -> (bool, Self::State) {
@@ -232,8 +236,10 @@ mod tests {
     impl EventModel for DummyModel {
         type Input = i32;
         type Output = i32;
+
         fn combine(_: &Self::Input, _: &Self::Output) {}
     }
+
     fn op(call: i64, ret: i64) -> Operation<DummyModel> {
         Operation {
             client_id: None,

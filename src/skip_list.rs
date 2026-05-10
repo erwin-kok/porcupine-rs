@@ -5,6 +5,10 @@ pub struct SkipList {
 }
 
 impl SkipList {
+    /// Build a skip-list for `n` entries (indices `0..n`).
+    ///
+    /// The sentinel head lives at index `n`.  Initial chain:
+    /// `head → 0 → 1 → … → n-1 → head`.
     pub fn new(n: usize) -> Self {
         let mut next = vec![0usize; n + 1];
         let mut prev = vec![0usize; n + 1];
@@ -13,7 +17,9 @@ impl SkipList {
             next[i] = i + 1; // last entry (n-1) points to n = head
             prev[i] = if i == 0 { n } else { i - 1 };
         }
+        // Sentinel head: next[head] = first entry (or head itself when n = 0).
         next[n] = if n == 0 { n } else { 0 };
+        // prev[head] is never read (the head is never removed); leave as 0.
 
         Self {
             next,
@@ -22,6 +28,9 @@ impl SkipList {
         }
     }
 
+    /// The first active entry, or `head` when the list is empty.
+    ///
+    /// The caller uses `front() < n` as the loop condition.
     #[inline]
     pub fn front(&self) -> usize {
         self.next[self.head]
@@ -33,6 +42,10 @@ impl SkipList {
         self.next[i]
     }
 
+    /// Splice entry `i` out of the active list in O(1).
+    ///
+    /// `prev[i]` and `next[i]` are preserved so that [`restore`] can undo
+    /// this operation exactly.
     pub fn remove(&mut self, i: usize) {
         let p = self.prev[i];
         let nx = self.next[i];
@@ -40,6 +53,11 @@ impl SkipList {
         self.prev[nx] = p;
     }
 
+    /// Re-insert a previously removed entry `i` in O(1).
+    ///
+    /// Uses the `prev[i]` / `next[i]` that were preserved by [`remove`].
+    /// Must be called in **reverse removal order** when multiple adjacent
+    /// entries were removed.
     pub fn restore(&mut self, i: usize) {
         let p = self.prev[i];
         let nx = self.next[i];
@@ -54,7 +72,7 @@ impl SkipList {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::skip_list::SkipList;
 
     // Helper: collect all active entries in order.
     fn active(sl: &SkipList, n: usize) -> Vec<usize> {
@@ -72,7 +90,7 @@ mod tests {
         let sl = SkipList::new(0);
         // front() returns head (= 0), and 0 < 0 is false, so the loop never runs.
         assert_eq!(sl.front(), sl.head);
-        assert_eq!(active(&sl, 0), vec![]);
+        assert_eq!(active(&sl, 0), Vec::<usize>::new());
     }
 
     #[test]
@@ -115,7 +133,7 @@ mod tests {
         for i in 0..n {
             sl.remove(i);
         }
-        assert_eq!(active(&sl, n), vec![]);
+        assert_eq!(active(&sl, n), Vec::<usize>::new());
         // front() == head, and head >= n, so loop condition is false.
         assert!(sl.front() >= n);
     }
@@ -191,7 +209,7 @@ mod tests {
         for i in 0..n {
             sl.remove(i);
         }
-        assert_eq!(active(&sl, n), vec![]);
+        assert_eq!(active(&sl, n), Vec::<usize>::new());
 
         // Restore in reverse order (correct LIFO order).
         for i in (0..n).rev() {

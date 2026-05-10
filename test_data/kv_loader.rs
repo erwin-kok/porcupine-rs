@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use porcupine_rs::{Event, EventModel, Model, Operation};
 use regex::Regex;
 use std::{
@@ -100,6 +102,18 @@ impl Model for KvModel {
                 .push(op.clone());
         }
         by_key.into_values().collect()
+    }
+
+    fn describe_operation(op: &Self::Op) -> String {
+        match op {
+            KvOp::Read { key, value } => format!("get('{key}') -> '{value}'"),
+            KvOp::Write { key, value } => format!("put('{key}', '{value}')"),
+            KvOp::Append { key, value } => format!("append('{key}', '{value}')"),
+        }
+    }
+
+    fn describe_state(state: &Self::State) -> String {
+        state.to_string()
     }
 }
 

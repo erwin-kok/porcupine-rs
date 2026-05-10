@@ -7,6 +7,7 @@ use crate::model::Model;
 // ---------------------------------------------------------------------------
 // Combined hash key
 // ---------------------------------------------------------------------------
+
 /// Mix the FNV-1a hash of `linearized` with the SipHash of `state` into a
 /// single u64 key.
 ///
@@ -14,6 +15,7 @@ use crate::model::Model;
 /// `(linearized, state)` pairs share the same bucket.
 fn cache_key<M: Model>(linearized: &Bitset, state: &M::State) -> u64 {
     let bitset_hash = linearized.hash_val();
+
     // Hash the state with the standard library's SipHash (good avalanche).
     let state_hash = {
         use std::collections::hash_map::DefaultHasher;
@@ -21,6 +23,7 @@ fn cache_key<M: Model>(linearized: &Bitset, state: &M::State) -> u64 {
         state.hash(&mut h);
         h.finish()
     };
+
     // Fibonacci/golden-ratio mix so that small differences in either input
     // produce very different combined keys.
     bitset_hash
@@ -29,9 +32,11 @@ fn cache_key<M: Model>(linearized: &Bitset, state: &M::State) -> u64 {
             .wrapping_add(bitset_hash << 6)
             .wrapping_add(bitset_hash >> 2)
 }
+
 // ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
+
 pub struct Cache<M: Model> {
     map: HashMap<u64, Vec<(Bitset, M::State)>>,
 }
@@ -66,20 +71,19 @@ impl<M: Model> Cache<M> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Bitset, Cache};
     use crate::model::Model;
 
     #[derive(Clone)]
     struct IntModel;
-
     impl Model for IntModel {
         type State = i32;
         type Op = i32;
         type Metadata = ();
-
         fn init() -> i32 {
             0
         }
+	
         fn step(s: &i32, op: &i32) -> (bool, i32) {
             (true, s + op)
         }

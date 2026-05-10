@@ -1,0 +1,220 @@
+/* =========================================================================
+   Porcupine visualizer — stylesheet
+   ========================================================================= */
+
+/* --- Design tokens -------------------------------------------------------- */
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Mono', Menlo, 'Courier New', monospace;
+
+  /* History bar */
+  --bar-fill:         #60b8d4;
+  --bar-fill-hover:   #3a9abf;
+  --bar-stroke:       #2e7fa3;
+  --bar-stroke-width: 1.5px;
+
+  /* Annotation bar */
+  --ann-fill:   #e8e8e8;
+  --ann-stroke: #aaa;
+
+  /* Linearization points */
+  --lp-valid:   rgba(30, 120, 60, 0.75);
+  --lp-invalid: rgba(210, 30, 30, 0.80);
+  --lp-line:    rgba(30, 30, 30, 0.35);
+
+  /* Dividers / chrome */
+  --divider:    #d8d8d8;
+  --bg:         #fafafa;
+  --legend-bg:  rgba(255, 255, 255, 0.85);
+
+  /* Tooltip */
+  --tooltip-bg:     #ffffff;
+  --tooltip-border: #ddd;
+  --tooltip-shadow: 0 4px 16px rgba(0,0,0,0.12);
+
+  /* Typography */
+  --text-primary:   #1a1a1a;
+  --text-secondary: #666;
+  --link-color:     #1a73e8;
+
+  /* Spacing */
+  --radius-bar:     5px;
+  --radius-tooltip: 6px;
+  --radius-legend:  8px;
+}
+
+/* --- Reset / base --------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Make SVG text baseline consistent across browsers */
+text {
+  dominant-baseline: middle;
+}
+
+/* --- Legend bar ----------------------------------------------------------- */
+#legend {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 42px;
+  padding: 0 16px;
+  background: var(--legend-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--divider);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+#legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Swatch squares in the legend */
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.legend-swatch--valid   { background: var(--lp-valid); }
+.legend-swatch--invalid { background: var(--lp-invalid); }
+
+/* The "jump to first error" link */
+#jump-link {
+  color: var(--link-color);
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity 0.15s;
+}
+#jump-link:hover { opacity: 0.75; }
+#jump-link.inactive { display: none; }
+
+/* --- Main canvas ---------------------------------------------------------- */
+#canvas {
+  margin-top: 50px;   /* clear the fixed legend bar */
+  padding: 8px;
+}
+
+/* Hidden scratch div used for text-width measurement */
+#calc {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* --- SVG elements --------------------------------------------------------- */
+.bg { fill: transparent; }
+
+.divider {
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+
+/* History bars */
+.history-rect {
+  fill:         var(--bar-fill);
+  stroke:       var(--bar-stroke);
+  stroke-width: var(--bar-stroke-width);
+  rx:           var(--radius-bar);
+  transition:   fill 0.1s;
+}
+
+/* Annotation bars */
+.client-annotation-rect {
+  fill:         var(--ann-fill);
+  stroke:       var(--ann-stroke);
+  stroke-width: 1;
+  rx:           var(--radius-bar);
+}
+
+/* Client-id labels on the left */
+.client-label {
+  font-size: 0.78rem;
+  fill: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* Text inside history bars */
+.history-text {
+  font-size:   0.78rem;
+  font-family: var(--font-mono);
+  fill:        #0d3d52;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Invisible hit-area on top of everything */
+.target-rect {
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Selected bar gets a thicker stroke */
+.selected {
+  stroke-width: 3px !important;
+  stroke: #0d3d52 !important;
+}
+
+/* Dimmed (not the focused partition / linearization) */
+.hidden { opacity: 0.18; }
+.hidden line { opacity: 0.5; } /* multiplicative — keeps lines slightly visible */
+
+/* --- Linearization points & lines ---------------------------------------- */
+.linearization         { stroke: var(--lp-valid);   }
+.linearization-invalid { stroke: var(--lp-invalid); }
+
+.linearization-point { stroke-width: 5; stroke-linecap: round; }
+.linearization-line  { stroke-width: 2; stroke-linecap: round; }
+
+/* --- Tooltip -------------------------------------------------------------- */
+.tooltip {
+  position:      absolute;
+  display:       none;
+  max-width:     280px;
+  width:         max-content;
+  padding:       10px 12px;
+  background:    var(--tooltip-bg);
+  border:        1px solid var(--tooltip-border);
+  border-radius: var(--radius-tooltip);
+  box-shadow:    var(--tooltip-shadow);
+  font-size:     0.78rem;
+  line-height:   1.55;
+  color:         var(--text-primary);
+  pointer-events: none;
+  z-index:       200;
+}
+
+.tooltip strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

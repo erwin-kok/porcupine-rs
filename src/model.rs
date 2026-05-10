@@ -30,8 +30,8 @@ pub trait Model: Clone + Send + Sync {
         s1 == s2
     }
 
-    fn describe_operation(op: &Operation<Self>) -> String {
-        format!("{:?}", op.op)
+    fn describe_operation(op: &Self::Op) -> String {
+        format!("{:?}", op)
     }
 
     fn describe_state(state: &Self::State) -> String {
@@ -59,6 +59,7 @@ pub struct Operation<M: Model> {
 // ---------------------------------------------------------------------------
 // EventModel
 // ---------------------------------------------------------------------------
+
 pub trait EventModel: Model {
     type Input: Clone + Send + Sync + Debug;
     type Output: Clone + Send + Sync + Debug;

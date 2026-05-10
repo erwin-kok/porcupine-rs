@@ -57,7 +57,7 @@ impl Bitset {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Bitset;
 
     #[test]
     fn new_is_all_clear() {

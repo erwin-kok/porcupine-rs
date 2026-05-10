@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Porcupine-rs — Linearizability Visualizer</title>
+    <style>
+      /* =========================================================================
+   Porcupine visualizer — stylesheet
+   ========================================================================= */
+
+/* --- Design tokens -------------------------------------------------------- */
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Mono', Menlo, 'Courier New', monospace;
+
+  /* History bar */
+  --bar-fill:         #60b8d4;
+  --bar-fill-hover:   #3a9abf;
+  --bar-stroke:       #2e7fa3;
+  --bar-stroke-width: 1.5px;
+
+  /* Annotation bar */
+  --ann-fill:   #e8e8e8;
+  --ann-stroke: #aaa;
+
+  /* Linearization points */
+  --lp-valid:   rgba(30, 120, 60, 0.75);
+  --lp-invalid: rgba(210, 30, 30, 0.80);
+  --lp-line:    rgba(30, 30, 30, 0.35);
+
+  /* Dividers / chrome */
+  --divider:    #d8d8d8;
+  --bg:         #fafafa;
+  --legend-bg:  rgba(255, 255, 255, 0.85);
+
+  /* Tooltip */
+  --tooltip-bg:     #ffffff;
+  --tooltip-border: #ddd;
+  --tooltip-shadow: 0 4px 16px rgba(0,0,0,0.12);
+
+  /* Typography */
+  --text-primary:   #1a1a1a;
+  --text-secondary: #666;
+  --link-color:     #1a73e8;
+
+  /* Spacing */
+  --radius-bar:     5px;
+  --radius-tooltip: 6px;
+  --radius-legend:  8px;
+}
+
+/* --- Reset / base --------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Make SVG text baseline consistent across browsers */
+text {
+  dominant-baseline: middle;
+}
+
+/* --- Legend bar ----------------------------------------------------------- */
+#legend {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 42px;
+  padding: 0 16px;
+  background: var(--legend-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--divider);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+#legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Swatch squares in the legend */
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.legend-swatch--valid   { background: var(--lp-valid); }
+.legend-swatch--invalid { background: var(--lp-invalid); }
+
+/* The "jump to first error" link */
+#jump-link {
+  color: var(--link-color);
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity 0.15s;
+}
+#jump-link:hover { opacity: 0.75; }
+#jump-link.inactive { display: none; }
+
+/* --- Main canvas ---------------------------------------------------------- */
+#canvas {
+  margin-top: 50px;   /* clear the fixed legend bar */
+  padding: 8px;
+}
+
+/* Hidden scratch div used for text-width measurement */
+#calc {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* --- SVG elements --------------------------------------------------------- */
+.bg { fill: transparent; }
+
+.divider {
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+
+/* History bars */
+.history-rect {
+  fill:         var(--bar-fill);
+  stroke:       var(--bar-stroke);
+  stroke-width: var(--bar-stroke-width);
+  rx:           var(--radius-bar);
+  transition:   fill 0.1s;
+}
+
+/* Annotation bars */
+.client-annotation-rect {
+  fill:         var(--ann-fill);
+  stroke:       var(--ann-stroke);
+  stroke-width: 1;
+  rx:           var(--radius-bar);
+}
+
+/* Client-id labels on the left */
+.client-label {
+  font-size: 0.78rem;
+  fill: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* Text inside history bars */
+.history-text {
+  font-size:   0.78rem;
+  font-family: var(--font-mono);
+  fill:        #0d3d52;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Invisible hit-area on top of everything */
+.target-rect {
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Selected bar gets a thicker stroke */
+.selected {
+  stroke-width: 3px !important;
+  stroke: #0d3d52 !important;
+}
+
+/* Dimmed (not the focused partition / linearization) */
+.hidden { opacity: 0.18; }
+.hidden line { opacity: 0.5; } /* multiplicative — keeps lines slightly visible */
+
+/* --- Linearization points & lines ---------------------------------------- */
+.linearization         { stroke: var(--lp-valid);   }
+.linearization-invalid { stroke: var(--lp-invalid); }
+
+.linearization-point { stroke-width: 5; stroke-linecap: round; }
+.linearization-line  { stroke-width: 2; stroke-linecap: round; }
+
+/* --- Tooltip -------------------------------------------------------------- */
+.tooltip {
+  position:      absolute;
+  display:       none;
+  max-width:     280px;
+  width:         max-content;
+  padding:       10px 12px;
+  background:    var(--tooltip-bg);
+  border:        1px solid var(--tooltip-border);
+  border-radius: var(--radius-tooltip);
+  box-shadow:    var(--tooltip-shadow);
+  font-size:     0.78rem;
+  line-height:   1.55;
+  color:         var(--text-primary);
+  pointer-events: none;
+  z-index:       200;
+}
+
+.tooltip strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+    </style>
+  </head>
+  <body>
+    <div id="legend">
+      <div class="legend-item">
+        <span style="font-weight:600;color:#1a1a1a;">Porcupine-rs</span>
+      </div>
+
+      <div class="legend-item" style="margin-left:8px;">
+        <svg width="32" height="14" style="flex-shrink:0;">
+          <rect x="0" y="2" width="32" height="10" rx="3"
+                fill="#60b8d4" stroke="#2e7fa3" stroke-width="1.5"/>
+        </svg>
+        <span>Operation</span>
+      </div>
+
+      <div class="legend-item">
+        <span class="legend-swatch legend-swatch--valid"></span>
+        <span>Valid linearization point</span>
+      </div>
+
+      <div class="legend-item">
+        <span class="legend-swatch legend-swatch--invalid"></span>
+        <span>Invalid linearization point</span>
+      </div>
+
+      <div class="legend-item" style="margin-left:auto;">
+        <span id="jump-link">↓ jump to first error</span>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         Main visualization canvas
+         ================================================================ -->
+    <div id="canvas"></div>
+
+    <!-- Hidden div used for measuring text widths -->
+    <div id="calc"></div>
+
+    <script>
+      'use strict'
+
+// ---------------------------------------------------------------------------
+// SVG helpers
+// ---------------------------------------------------------------------------
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function svgnew(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag)
+  svgattr(el, attrs)
+  return el
+}
+
+function svgattr(el, attrs) {
+  if (!attrs) return
+  for (const k of Object.keys(attrs)) {
+    el.setAttributeNS(null, k, attrs[k])
+  }
+}
+
+function svgattach(parent, child) {
+  return parent.appendChild(child)
+}
+
+function svgadd(parent, tag, attrs) {
+  return svgattach(parent, svgnew(tag, attrs))
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function newArray(n, fn) {
+  return Array.from({ length: n }, (_, i) => fn(i))
+}
+
+function arrayEq(a, b) {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  return a.every((v, i) => v === b[i])
+}
+
+function formatCallReturn(callTime, returnTime) {
+  return `<br><br><span style="color:#888;font-size:0.72rem;">call: ${callTime} &nbsp;·&nbsp; return: ${returnTime}</span>`
+}
+
+// ---------------------------------------------------------------------------
+// Main render function
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line no-unused-vars, complexity
+function render(data) {
+  const PADDING          = 12
+  const BOX_HEIGHT       = 32
+  const BOX_SPACE        = 14
+  const EPSILON          = 20
+  const LINE_BLEED       = 5
+  const BOX_GAP          = 20
+  const BOX_TEXT_PADDING = 10
+  const BAR_RADIUS       = 5
+
+  // -------------------------------------------------------------------------
+  // Field access helpers — all Rust fields are camelCase in the JSON.
+  // Option<T> fields (clientId, tag) can be null; we normalise them here.
+  // -------------------------------------------------------------------------
+  const annotations = data.annotations
+  const coreHistory = data.partitions
+
+  // For simplicity, append annotations as a pseudo-partition.
+  const allData = [...coreHistory, { history: annotations }]
+
+  // -------------------------------------------------------------------------
+  // Assign client ids
+  // -------------------------------------------------------------------------
+  let maxClient = -1
+  for (const partition of allData) {
+    for (const element of partition.history) {
+      // clientId is Option<u32> → may be null; treat null as 0
+      if (element.clientId === null || element.clientId === undefined) {
+        element.clientId = 0
+      }
+      maxClient = Math.max(maxClient, element.clientId)
+    }
+  }
+
+  const realClients = maxClient + 1
+
+  // Collect unique annotation tags (tag is Option<String> → may be null)
+  const tags = new Set()
+  for (const annot of annotations) {
+    const tag = annot.tag ?? ''
+    if (tag.length > 0) tags.add(tag)
+  }
+
+  // Assign synthetic client numbers for tags
+  const tag2ClientId = {}
+  const sortedTags = [...tags].toSorted()
+  for (const tag of sortedTags) {
+    maxClient += 1
+    tag2ClientId[tag] = maxClient
+  }
+  for (const annot of annotations) {
+    const tag = annot.tag ?? ''
+    if (tag.length > 0) annot.clientId = tag2ClientId[tag]
+  }
+
+  const nClient = maxClient + 1
+
+  // -------------------------------------------------------------------------
+  // GIDs + timestamp sets
+  // -------------------------------------------------------------------------
+  const allTimestamps   = new Set()
+  const startTimestamps = new Set()
+  const endTimestamps   = new Set()
+  let gid = 0
+  const byGid = {}
+
+  for (const partition of allData) {
+    for (const element of partition.history) {
+      allTimestamps.add(element.start)
+      allTimestamps.add(element.end)
+      startTimestamps.add(element.start)
+      endTimestamps.add(element.end)
+      element.gid = gid
+      byGid[gid] = element
+      gid++
+    }
+  }
+
+  let sortedTimestamps = [...allTimestamps].toSorted((a, b) => a - b)
+
+  // -------------------------------------------------------------------------
+  // Epsilon adjustments (same logic as original)
+  // -------------------------------------------------------------------------
+  const epsilon = 16
+
+  for (const [index, partition] of allData.entries()) {
+    if (index === allData.length - 1) continue // skip annotations pseudo-partition
+    for (const element of partition.history) {
+      if (startTimestamps.has(element.end)) {
+        element.end += epsilon
+        allTimestamps.add(element.end)
+      }
+    }
+  }
+
+  // Annotation-specific adjustments
+  for (const element of allData.at(-1).history) {
+    if (element.end === element.start) {
+      element.end += epsilon / 4
+      allTimestamps.add(element.end)
+    } else {
+      if (startTimestamps.has(element.end)) {
+        element.end -= epsilon / 2
+        allTimestamps.add(element.end)
+      }
+      if (endTimestamps.has(element.start)) {
+        element.start += epsilon / 2
+        allTimestamps.add(element.start)
+      }
+    }
+  }
+
+  sortedTimestamps = [...allTimestamps].toSorted((a, b) => a - b)
+
+  // -------------------------------------------------------------------------
+  // Layout — greedy left-to-right scan
+  // -------------------------------------------------------------------------
+  const xPos = {}
+
+  // Compute text widths for every element
+  const byEnd = allData
+    .flatMap((partition) =>
+      partition.history.map((element) => {
+        const scratch = document.querySelector('#calc')
+        scratch.innerHTML = ''
+        const svg = svgadd(scratch, 'svg')
+        const text = svgadd(svg, 'text', { 'text-anchor': 'middle', class: 'history-text' })
+        text.textContent = element.description
+        const width = text.getBBox().width + 2 * BOX_TEXT_PADDING
+        return { start: element.start, end: element.end, width, gid: element.gid }
+      })
+    )
+    .toSorted((a, b) => a.end - b.end)
+
+  // Preprocess linearization points
+  // partialLinearizations items are {index, stateDescription} (camelCase)
+  const eventToLinearizations = newArray(gid, () => [])
+  const eventIllegalLast      = newArray(gid, () => [])
+  const allLinearizations     = []
+  let lgid = 0
+
+  for (const partition of coreHistory) {
+    for (const lin of partition.partialLinearizations) {
+      const globalized = []
+      const included   = new Set()
+
+      for (const [position, step] of lin.entries()) {
+        included.add(step.index)
+        const g = partition.history[step.index].gid
+        globalized.push(g)
+        eventToLinearizations[g].push({ index: lgid, position })
+      }
+
+      allLinearizations.push(globalized)
+
+      let minEnd = Infinity
+      for (const [i, element] of partition.history.entries()) {
+        if (!included.has(i)) minEnd = Math.min(minEnd, element.end)
+      }
+      for (const [i, element] of partition.history.entries()) {
+        if (!included.has(i) && element.start < minEnd) {
+          eventIllegalLast[element.gid].push(lgid)
+        }
+      }
+
+      lgid++
+    }
+  }
+
+  const linearizationPositions = newArray(lgid, () => [])
+
+  xPos[sortedTimestamps[0]] = 0
+  let eventIndex = 0
+
+  for (let i = 1; i < sortedTimestamps.length; i++) {
+    const ts  = sortedTimestamps[i]
+    let   pos = xPos[sortedTimestamps[i - 1]] + BOX_GAP
+
+    while (eventIndex < byEnd.length && byEnd[eventIndex].end <= ts) {
+      const ev = byEnd[eventIndex]
+      pos = Math.max(pos, xPos[ev.start] + ev.width)
+
+      const candidates = [
+        ...eventToLinearizations[ev.gid],
+        ...eventIllegalLast[ev.gid].map((idx) => ({
+          index:    idx,
+          position: allLinearizations[idx].length - 1,
+        })),
+      ]
+
+      for (const { index, position } of candidates) {
+        for (let j = linearizationPositions[index].length; j <= position; j++) {
+          const prev     = linearizationPositions[index].length > 0 ? linearizationPositions[index][j - 1] : null
+          const nextGid  = allLinearizations[index][j]
+          const nextPos  = prev === null
+            ? xPos[byGid[nextGid].start]
+            : Math.max(xPos[byGid[nextGid].start], prev + EPSILON)
+          linearizationPositions[index].push(nextPos)
+        }
+        pos = Math.max(pos, linearizationPositions[index][position])
+      }
+
+      for (const li of eventIllegalLast[ev.gid]) {
+        const lin = linearizationPositions[li]
+        pos = Math.max(pos, lin.at(-1) + EPSILON)
+      }
+
+      eventIndex++
+    }
+
+    xPos[ts] = pos
+  }
+
+  // -------------------------------------------------------------------------
+  // Measure client-label widths
+  // -------------------------------------------------------------------------
+  let maxTagWidth = 0
+  for (let i = 0; i < nClient; i++) {
+    const label  = i < realClients ? String(i) : sortedTags[i - realClients]
+    const scratch = document.querySelector('#calc')
+    scratch.innerHTML = ''
+    const svg  = svgadd(scratch, 'svg')
+    const text = svgadd(svg, 'text', { 'text-anchor': 'end', class: 'client-label' })
+    text.textContent = label
+    maxTagWidth = Math.max(maxTagWidth, text.getBBox().width + 2 * BOX_TEXT_PADDING)
+  }
+
+  const t0x = PADDING + maxTagWidth
+
+  // -------------------------------------------------------------------------
+  // Draw
+  // -------------------------------------------------------------------------
+  let selected      = false
+  let selectedIndex = [-1, -1]
+
+  const totalHeight = 2 * PADDING + BOX_HEIGHT * nClient + BOX_SPACE * (nClient - 1)
+  const totalWidth  = 2 * PADDING + maxTagWidth + xPos[sortedTimestamps.at(-1)]
+
+  const svg = svgadd(document.querySelector('#canvas'), 'svg', {
+    width:  totalWidth,
+    height: totalHeight,
+  })
+
+  // Background + client labels
+  const bg = svgadd(svg, 'g')
+  const bgRect = svgadd(bg, 'rect', {
+    width: totalWidth, height: totalHeight, x: 0, y: 0, class: 'bg',
+  })
+  bgRect.addEventListener('click', handleBgClick)
+
+  for (let i = 0; i < nClient; i++) {
+    const label = i < realClients ? String(i) : sortedTags[i - realClients]
+    const text  = svgadd(bg, 'text', {
+      x:             PADDING + maxTagWidth - BOX_TEXT_PADDING,
+      y:             PADDING + BOX_HEIGHT / 2 + i * (BOX_HEIGHT + BOX_SPACE),
+      'text-anchor': 'end',
+      class:         'client-label',
+    })
+    text.textContent = label
+  }
+
+  // Vertical divider at t=0
+  svgadd(bg, 'line', {
+    x1: t0x, y1: PADDING, x2: t0x, y2: totalHeight - PADDING, class: 'divider',
+  })
+
+  // Horizontal divider between clients and annotation tags
+  if (tags.size > 0) {
+    const lineY = PADDING + realClients * (BOX_HEIGHT + BOX_SPACE) - BOX_SPACE / 2
+    svgadd(bg, 'line', {
+      x1: PADDING, y1: lineY, x2: t0x, y2: lineY, class: 'divider',
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // History bars
+  // -------------------------------------------------------------------------
+  const historyLayers = []
+  const historyRects  = []
+  const targetRects   = svgnew('g')
+
+  for (const [partIdx, partition] of allData.entries()) {
+    const layer = svgadd(svg, 'g')
+    historyLayers.push(layer)
+    const rects = []
+
+    for (const [elIdx, element] of partition.history.entries()) {
+      const g     = svgadd(layer, 'g')
+      const rx    = xPos[element.start]
+      const rw    = xPos[element.end] - rx
+      const x     = rx + t0x
+      const y     = PADDING + element.clientId * (BOX_HEIGHT + BOX_SPACE)
+      const cls   = element.annotation ? 'client-annotation-rect' : 'history-rect'
+      const style = element.annotation && element.backgroundColor && element.backgroundColor.length > 0
+        ? `fill:${element.backgroundColor};`
+        : ''
+
+      rects.push(
+        svgadd(g, 'rect', {
+          height: BOX_HEIGHT, width: rw, x, y,
+          rx: BAR_RADIUS, ry: BAR_RADIUS,
+          class: cls, style,
+        })
+      )
+
+      const textEl = svgadd(g, 'text', {
+        x: x + rw / 2,
+        y: y + BOX_HEIGHT / 2,
+        'text-anchor': 'middle',
+        class: 'history-text',
+        style: element.annotation && element.textColor && element.textColor.length > 0
+          ? `fill:${element.textColor};`
+          : '',
+      })
+      textEl.textContent = element.description
+
+      // Transparent hit-area on top of everything else
+      const mouseTarget = svgadd(targetRects, 'rect', {
+        height: BOX_HEIGHT, width: rw, x, y,
+        class: 'target-rect',
+        'data-partition': partIdx,
+        'data-index':     elIdx,
+      })
+      mouseTarget.addEventListener('mouseover', handleMouseOver)
+      mouseTarget.addEventListener('mousemove',  handleMouseMove)
+      mouseTarget.addEventListener('mouseout',   handleMouseOut)
+      mouseTarget.addEventListener('click',      handleClick)
+    }
+
+    historyRects.push(rects)
+  }
+
+  // -------------------------------------------------------------------------
+  // Partial linearizations
+  // -------------------------------------------------------------------------
+  const illegalLast         = coreHistory.map((p) => p.partialLinearizations.map(() => new Set()))
+  const largestIllegal      = coreHistory.map(() => ({}))
+  const largestIllegalLength = coreHistory.map(() => ({}))
+  const partialLayers       = []
+  const errorPoints         = []
+
+  for (const [partIdx, partition] of coreHistory.entries()) {
+    const layerGroup = []
+    partialLayers.push(layerGroup)
+
+    for (const [linIdx, lin] of partition.partialLinearizations.entries()) {
+      const g         = svgadd(svg, 'g')
+      layerGroup.push(g)
+      let prevX       = null
+      let prevY       = null
+      let prevElement = null
+      const included  = new Set()
+
+      for (const step of lin) {
+        const element = partition.history[step.index]
+        const hereX   = t0x + xPos[element.start]
+        const x       = prevX === null ? hereX : Math.max(hereX, prevX + EPSILON)
+        const y       = PADDING + element.clientId * (BOX_HEIGHT + BOX_SPACE) - LINE_BLEED
+
+        if (prevElement !== null) {
+          svgadd(g, 'line', {
+            x1: prevX, x2: x,
+            y1: prevElement.clientId >= element.clientId ? prevY : prevY + BOX_HEIGHT + 2 * LINE_BLEED,
+            y2: prevElement.clientId <= element.clientId ? y     : y     + BOX_HEIGHT + 2 * LINE_BLEED,
+            class: 'linearization linearization-line',
+          })
+        }
+
+        svgadd(g, 'line', {
+          x1: x, x2: x, y1: y, y2: y + BOX_HEIGHT + 2 * LINE_BLEED,
+          class: 'linearization linearization-point',
+        })
+
+        prevX = x; prevY = y; prevElement = element
+        included.add(step.index)
+      }
+
+      // Illegal next steps
+      let minEnd = Infinity
+      for (const [i, el] of partition.history.entries()) {
+        if (!included.has(i)) minEnd = Math.min(minEnd, el.end)
+      }
+
+      for (const [i, element] of partition.history.entries()) {
+        if (!included.has(i) && element.start < minEnd) {
+          const hereX = t0x + xPos[element.start]
+          const x     = prevX === null ? hereX : Math.max(hereX, prevX + EPSILON)
+          const y     = PADDING + element.clientId * (BOX_HEIGHT + BOX_SPACE) - LINE_BLEED
+
+          svgadd(g, 'line', {
+            x1: prevX, x2: x,
+            y1: prevElement.clientId >= element.clientId ? prevY : prevY + BOX_HEIGHT + 2 * LINE_BLEED,
+            y2: prevElement.clientId <= element.clientId ? y     : y     + BOX_HEIGHT + 2 * LINE_BLEED,
+            class: 'linearization-invalid linearization-line',
+          })
+
+          const point = svgadd(g, 'line', {
+            x1: x, x2: x, y1: y, y2: y + BOX_HEIGHT + 2 * LINE_BLEED,
+            class: 'linearization-invalid linearization-point',
+          })
+
+          errorPoints.push({ x, partition: partIdx, index: lin.at(-1).index, element: point })
+          illegalLast[partIdx][linIdx].add(i)
+
+          if (!Object.hasOwn(largestIllegalLength[partIdx], i) ||
+              largestIllegalLength[partIdx][i] < lin.length) {
+            largestIllegalLength[partIdx][i] = lin.length
+            largestIllegal[partIdx][i]       = linIdx
+          }
+        }
+      }
+    }
+  }
+
+  errorPoints.sort((a, b) => a.x - b.x)
+  svgattach(svg, targetRects)
+
+  // -------------------------------------------------------------------------
+  // Tooltip
+  // -------------------------------------------------------------------------
+  const tooltip = document.querySelector('#canvas').appendChild(document.createElement('div'))
+  tooltip.setAttribute('class', 'tooltip')
+
+  // -------------------------------------------------------------------------
+  // Event handlers
+  // -------------------------------------------------------------------------
+  function handleMouseOver() {
+    if (selected) return
+    const partition = Number.parseInt(this.dataset.partition, 10)
+    const index     = Number.parseInt(this.dataset.index,     10)
+    highlight(partition, index)
+    tooltip.style.display = 'block'
+  }
+
+  function linearizationIndex(partition, index) {
+    if (partition >= coreHistory.length) return null
+    if (Object.hasOwn(coreHistory[partition].largest, index)) return coreHistory[partition].largest[index]
+    if (Object.hasOwn(largestIllegal[partition], index))      return largestIllegal[partition][index]
+    return null
+  }
+
+  function highlight(partition, index) {
+    for (const [i, layer] of historyLayers.entries()) {
+      layer.classList.toggle('hidden', i !== partition)
+    }
+    for (const layer of partialLayers) {
+      for (const g of layer) g.classList.add('hidden')
+    }
+    const maxIndex = linearizationIndex(partition, index)
+    if (maxIndex !== null) partialLayers[partition][maxIndex].classList.remove('hidden')
+    updateJump()
+  }
+
+  let lastTooltip = [null, null, null, null, null]
+
+  function handleMouseMove(event_) {
+    if (selected) return
+
+    const partition   = Number.parseInt(this.dataset.partition, 10)
+    const index       = Number.parseInt(this.dataset.index,     10)
+    const [sP, sI]    = selectedIndex
+    const thisTooltip = [partition, index, selected, sP, sI]
+
+    if (!arrayEq(lastTooltip, thisTooltip)) {
+      const maxIndex   = selected
+        ? linearizationIndex(sP, sI)
+        : linearizationIndex(partition, index)
+      const callTime   = allData[partition].history[index].originalStart
+      const returnTime = allData[partition].history[index].originalEnd
+      let metadata     = ''
+
+      if (partition < coreHistory.length) {
+        const m = allData[partition].history[index].metadata
+        if (m && m.length > 0) metadata = m + '<br><br>'
+      }
+
+      if (partition >= coreHistory.length) {
+        const details = annotations[index].details ?? ''
+        tooltip.innerHTML = details.length === 0 ? '&langle;no details&rangle;' : details
+
+      } else if (selected && sP !== partition) {
+        tooltip.innerHTML = metadata + 'Not part of selected partition.' + formatCallReturn(callTime, returnTime)
+
+      } else if (maxIndex === null) {
+        tooltip.innerHTML = metadata +
+          (selected
+            ? 'Selected element is not part of any partial linearization.'
+            : 'Not part of any partial linearization.') +
+          formatCallReturn(callTime, returnTime)
+
+      } else {
+        const lin = coreHistory[partition].partialLinearizations[maxIndex]
+        let previous = null
+        let current  = null
+        let found    = false
+        for (const step of lin) {
+          previous = current
+          current  = step
+          if (current.index === index) { found = true; break }
+        }
+
+        let message = metadata
+
+        if (found) {
+          if (previous !== null) {
+            message += `<strong>Previous state:</strong><br>${previous.stateDescription}<br><br>`
+          }
+          message += `<strong>New state:</strong><br>${current.stateDescription}` + formatCallReturn(callTime, returnTime)
+
+        } else if (illegalLast[partition][maxIndex].has(index)) {
+          message += `<strong>Previous state:</strong><br>${lin.at(-1).stateDescription}<br><br>` +
+            `<strong>New state:</strong><br>&langle;invalid op&rangle;` + formatCallReturn(callTime, returnTime)
+
+        } else {
+          message += "Not part of selected element's partial linearization." + formatCallReturn(callTime, returnTime)
+        }
+
+        tooltip.innerHTML = message
+      }
+
+      lastTooltip = thisTooltip
+    }
+
+    const maxX =
+      document.documentElement.scrollLeft +
+      document.documentElement.clientWidth -
+      PADDING -
+      tooltip.getBoundingClientRect().width
+    tooltip.style.left = Math.min(event_.pageX + 20, maxX) + 'px'
+    tooltip.style.top  = event_.pageY + 20 + 'px'
+  }
+
+  function handleMouseOut() {
+    if (selected) return
+    resetHighlight()
+    tooltip.style.display = 'none'
+    lastTooltip = [null, null, null, null, null]
+  }
+
+  function resetHighlight() {
+    for (const layer of historyLayers)   layer.classList.remove('hidden')
+    for (const layers of partialLayers) {
+      for (const [i, l] of layers.entries()) l.classList.toggle('hidden', i !== 0)
+    }
+    updateJump()
+  }
+
+  let jumpClickHandler = null
+
+  function updateJump() {
+    const jump  = document.querySelector('#jump-link')
+    const point = errorPoints.find((pt) => !pt.element.parentElement.classList.contains('hidden'))
+
+    if (jumpClickHandler) { jump.removeEventListener('click', jumpClickHandler); jumpClickHandler = null }
+
+    if (point) {
+      jump.classList.remove('inactive')
+      jumpClickHandler = () => {
+        point.element.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'center' })
+        if (!selected) select(point.partition, point.index)
+      }
+      jump.addEventListener('click', jumpClickHandler)
+    } else {
+      jump.classList.add('inactive')
+    }
+  }
+
+  function handleClick(event_) {
+    const partition = Number.parseInt(this.dataset.partition, 10)
+    const index     = Number.parseInt(this.dataset.index,     10)
+    if (selected) {
+      const [sP, sI] = selectedIndex
+      if (partition === sP && index === sI) { deselect(); return }
+      historyRects[sP][sI].classList.remove('selected')
+    }
+    select(partition, index)
+    tooltip.style.display = 'block'
+    const maxX =
+      document.documentElement.scrollLeft +
+      document.documentElement.clientWidth -
+      PADDING -
+      tooltip.getBoundingClientRect().width
+    tooltip.style.left = Math.min(event_.pageX + 20, maxX) + 'px'
+    tooltip.style.top  = event_.pageY + 20 + 'px'
+  }
+
+  function handleBgClick() {
+    deselect()
+    tooltip.style.display = 'none'
+    lastTooltip = [null, null, null, null, null]
+  }
+
+  function select(partition, index) {
+    selected      = true
+    selectedIndex = [partition, index]
+    highlight(partition, index)
+    historyRects[partition][index].classList.add('selected')
+  }
+
+  function deselect() {
+    if (!selected) return
+    selected = false
+    resetHighlight()
+    const [p, i] = selectedIndex
+    historyRects[p][i].classList.remove('selected')
+  }
+
+  // Initialise same as mouse-out
+  handleMouseOut()
+}
+
+      const data = {"partitions":[{"history":[{"clientId":0,"start":0,"originalStart":"0","end":1500,"originalEnd":"100","description":"get('x') -> 'w'","metadata":"","annotation":false},{"clientId":1,"start":100,"originalStart":"5","end":200,"originalEnd":"10","description":"put('x', 'y')","metadata":"","annotation":false},{"clientId":2,"start":0,"originalStart":"0","end":200,"originalEnd":"10","description":"put('x', 'z')","metadata":"","annotation":false},{"clientId":1,"start":300,"originalStart":"20","end":500,"originalEnd":"30","description":"get('x') -> 'y'","metadata":"","annotation":false},{"clientId":1,"start":700,"originalStart":"35","end":900,"originalEnd":"45","description":"put('x', 'w')","metadata":"","annotation":false},{"clientId":5,"start":400,"originalStart":"25","end":700,"originalEnd":"35","description":"get('x') -> 'z'","metadata":"","annotation":false},{"clientId":3,"start":500,"originalStart":"30","end":800,"originalEnd":"40","description":"get('x') -> 'y'","metadata":"","annotation":false}],"partialLinearizations":[[{"index":2,"stateDescription":"z"},{"index":1,"stateDescription":"y"},{"index":3,"stateDescription":"y"},{"index":6,"stateDescription":"y"},{"index":4,"stateDescription":"w"},{"index":0,"stateDescription":"w"}],[{"index":1,"stateDescription":"y"},{"index":2,"stateDescription":"z"},{"index":5,"stateDescription":"z"}]],"largest":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":1,"6":0}},{"history":[{"clientId":4,"start":1000,"originalStart":"50","end":1400,"originalEnd":"90","description":"get('y') -> 'a'","metadata":"","annotation":false},{"clientId":2,"start":1100,"originalStart":"55","end":1300,"originalEnd":"85","description":"put('y', 'a')","metadata":"","annotation":false}],"partialLinearizations":[[{"index":1,"stateDescription":"a"},{"index":0,"stateDescription":"a"}]],"largest":{"0":0,"1":0}}],"annotations":[{"clientId":4,"tag":"","start":200,"end":600,"description":"get('y') timeout","details":"","annotation":true,"textColor":"","backgroundColor":"#ff9191"},{"clientId":5,"tag":"","start":1200,"end":1200,"description":"get('x') timeout","details":"","annotation":true,"textColor":"","backgroundColor":"#ff9191"},{"clientId":0,"tag":"Server 1","start":500,"end":500,"description":"leader","details":"became leader in term 3 with 2 votes","annotation":true,"textColor":"","backgroundColor":""},{"clientId":0,"tag":"Server 3","start":200,"end":200,"description":"duplicate","details":"saw duplicate operation put('x', 'y')","annotation":true,"textColor":"","backgroundColor":""},{"clientId":0,"tag":"Server 2","start":1200,"end":1200,"description":"restart","details":"","annotation":true,"textColor":"","backgroundColor":""},{"clientId":0,"tag":"Server 3","start":0,"end":0,"description":"leader","details":"became leader in term 1 with 3 votes","annotation":true,"textColor":"","backgroundColor":""},{"clientId":0,"tag":"Test Framework","start":300,"end":700,"description":"partition [3] [1 2]","details":"","annotation":true,"textColor":"","backgroundColor":"#efaefc"},{"clientId":0,"tag":"Test Framework","start":800,"end":1500,"description":"partition [2] [1 3]","details":"","annotation":true,"textColor":"","backgroundColor":"#efaefc"}]}
+
+      render(data)
+    </script>
+  </body>
+</html>

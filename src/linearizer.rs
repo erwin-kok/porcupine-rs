@@ -1,4 +1,5 @@
 use std::mem;
+use std::sync::Arc;
 
 use crate::bitset::Bitset;
 use crate::cache::Cache;
@@ -28,10 +29,12 @@ pub struct Linearizer<'a, M: Model> {
     linearized: Bitset,
     cache: Cache<M>,
     stack: Vec<Frame<M::State>>,
+    compute_info: bool,
+    longest: Vec<Option<Arc<Vec<usize>>>>,
 }
 
 impl<'a, M: Model> Linearizer<'a, M> {
-    pub fn new(partition: &'a Partition<M>) -> Self {
+    pub fn new(partition: &'a Partition<M>, compute_info: bool) -> Self {
         let n = partition.check_history.len();
         let m = partition.ops.len();
 
@@ -53,13 +56,18 @@ impl<'a, M: Model> Linearizer<'a, M> {
             linearized: Bitset::new(m),
             cache: Cache::new(),
             stack: Vec::new(),
+            compute_info,
+            longest: if compute_info {
+                vec![None; m]
+            } else {
+                Vec::new()
+            },
         }
     }
 
     pub fn front(&self) -> usize {
         self.sl.front()
     }
-
     pub fn next_of(&self, cur: usize) -> usize {
         self.sl.next_of(cur)
     }
@@ -128,5 +136,64 @@ impl<'a, M: Model> Linearizer<'a, M> {
         self.sl.restore(self.call_pos[frame.op_index]);
 
         Some(frame.history_pos)
+    }
+
+    // -----------------------------------------------------------------------
+    // Partial linearization tracking
+    // -----------------------------------------------------------------------
+
+    /// Update `longest` for every operation currently on the stack.
+    ///
+    /// Called just before [`backtrack`] when a `Return` entry is at the head
+    /// of the active history.  At that moment the stack represents the longest
+    /// prefix we've found so far that includes each of those operations.
+    ///
+    /// The sequence is built lazily (at most once per call) and shared by all
+    /// entries that benefit from it — an `Arc` clone is O(1).
+    pub fn update_longest(&mut self) {
+        if !self.compute_info {
+            return;
+        }
+
+        let depth = self.stack.len();
+        // Shared sequence built at most once per call.
+        let mut seq: Option<Arc<Vec<usize>>> = None;
+
+        for frame in &self.stack {
+            let id = frame.op_index;
+            let needs_update = match &self.longest[id] {
+                None => true,
+                Some(prev) => depth > prev.len(),
+            };
+            if needs_update {
+                if seq.is_none() {
+                    // Build lazily: collect all op_indices currently on the stack
+                    // in linearization order.
+                    let s: Vec<usize> = self.stack.iter().map(|f| f.op_index).collect();
+                    seq = Some(Arc::new(s));
+                }
+                self.longest[id] = seq.clone();
+            }
+        }
+    }
+
+    /// Called when the search completes with a full linearization.
+    ///
+    /// Sets every entry in `longest` to the complete linearization sequence
+    /// (the entire stack, in order).  All entries share the same `Arc`.
+    pub fn finalize_longest(&mut self) {
+        if !self.compute_info {
+            return;
+        }
+
+        let seq = Arc::new(self.stack.iter().map(|f| f.op_index).collect::<Vec<_>>());
+        for slot in &mut self.longest {
+            *slot = Some(seq.clone());
+        }
+    }
+
+    /// Consume the `Linearizer` and return the `longest` array.
+    pub fn into_longest(self) -> Vec<Option<Arc<Vec<usize>>>> {
+        self.longest
     }
 }
